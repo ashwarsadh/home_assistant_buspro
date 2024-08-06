@@ -39,6 +39,18 @@ class _Control:
             operate_code = OperateCode.ReadStatusOfUniversalSwitch
             payload = [control.switch_number]
 
+        elif type(control) == _CoverControl:
+            operate_code = OperateCode.CurtainSwitchControl
+            payload = [control.channel_number, control.channel_status.value]
+
+        elif type(control) == _ReadCoverStatus:
+            operate_code = OperateCode.CurtainSwitchStatus
+            payload = [control.channel_number]
+
+        elif type(control) == _ReadMotionSensorStatus:
+            operate_code = OperateCode.ReadMotionSensorStatus
+            payload = []
+
         elif type(control) == _ReadSensorStatus:
             operate_code = OperateCode.ReadSensorStatus
             payload = []
@@ -59,6 +71,15 @@ class _Control:
             operate_code = OperateCode.ControlFloorHeatingStatus
             payload = [control.temperature_type, control.status, control.mode, control.normal_temperature,
                        control.day_temperature, control.night_temperature, control.away_temperature]
+
+        elif type(control) == _ReadPanelAC:
+            operate_code = OperateCode.ReadPanelAC
+            payload = [control.command]
+
+        elif type(control) == _ControlPanelAC:
+            operate_code = OperateCode.ControlPanelAC
+            payload = [control.command, control.mode]
+
 
         else:
             return None
@@ -99,6 +120,18 @@ class _SingleChannelControl(_Control):
         self.running_time_minutes = None
         self.running_time_seconds = None
 
+class _CoverControl(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+
+        self.channel_number = None
+        self.channel_status = None
+
+class _ReadCoverStatus(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+
+        self.channel_number = None
 
 class _SceneControl(_Control):
     def __init__(self, buspro):
@@ -134,6 +167,10 @@ class _ReadSensorStatus(_Control):
         super().__init__(buspro)
         # no more properties
 
+class _ReadMotionSensorStatus(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        # no more properties
 
 class _ReadSensorsInOneStatus(_Control):
     def __init__(self, buspro):
@@ -146,6 +183,11 @@ class _ReadFloorHeatingStatus(_Control):
         super().__init__(buspro)
         # no more properties
 
+class _ReadPanelAC(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        self.command = None
+        # no more properties
 
 class _ControlFloorHeatingStatus(_Control):
     def __init__(self, buspro):
@@ -159,6 +201,12 @@ class _ControlFloorHeatingStatus(_Control):
         self.night_temperature = None
         self.away_temperature = None
 
+class _ControlPanelAC(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+
+        self.command = None
+        self.mode = None
 
 class _ReadDryContactStatus(_Control):
     def __init__(self, buspro):

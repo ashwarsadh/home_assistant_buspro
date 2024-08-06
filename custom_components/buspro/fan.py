@@ -6,14 +6,15 @@ https://home-assistant.io/components/...
 """
 
 import logging
+import math
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.components.light import (
-    LightEntity, 
-    ColorMode, 
+from homeassistant.components.fan import (
+    FanEntity, 
     PLATFORM_SCHEMA, 
-    ATTR_BRIGHTNESS
+    ATTR_PERCENTAGE,
+    FanEntityFeature
 )
 from homeassistant.const import (CONF_NAME, CONF_DEVICES)
 from homeassistant.core import callback
@@ -21,6 +22,10 @@ from homeassistant.core import callback
 from ..buspro import DATA_BUSPRO
 from datetime import timedelta
 import homeassistant.helpers.event as event
+from typing import Optional, Any  
+from homeassistant.util.percentage import ranged_value_to_percentage, percentage_to_ranged_value
+from homeassistant.util.scaling import int_states_in_range
+
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +33,11 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_DEVICE_RUNNING_TIME = 0
 DEFAULT_PLATFORM_RUNNING_TIME = 0
 DEFAULT_DIMMABLE = True
+SPEED_RANGE = (1, 100)  # off is not included
+percentage = 50
+
+#value_in_range = math.ceil(percentage_to_ranged_value(SPEED_RANGE, 50))
+
 
 DEVICE_SCHEMA = vol.Schema({
     vol.Optional("running_time", default=DEFAULT_DEVICE_RUNNING_TIME): cv.positive_int,
@@ -64,10 +74,10 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
         address2 = address.split('.')
         device_address = (int(address2[0]), int(address2[1]))
         channel_number = int(address2[2])
-        _LOGGER.debug("Adding light '{}' with address {} and channel number {}".format(name, device_address, channel_number))
+        _LOGGER.debug("Adding Fan '{}' with address {} and channel number {}".format(name, device_address, channel_number))
 
         light = Light(hdl, device_address, channel_number, name)
-        devices.append(BusproLight(hass, light, device_running_time, dimmable))
+        devices.append(BusproFan(hass, light, device_running_time, dimmable))
 
     async_add_entites(devices)
     for device in devices:
@@ -75,20 +85,19 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
 
 
 # noinspection PyAbstractClass
-class BusproLight(LightEntity):
-    """Representation of a Buspro light."""
+class BusproFan(FanEntity):
+    """Representation of a Buspro Fan."""
 
     def __init__(self, hass, device, running_time, dimmable):
         self._hass = hass
         self._device = device
         self._running_time = running_time
         self._dimmable = dimmable
-        if self._dimmable:
-            self._attr_color_mode = ColorMode.BRIGHTNESS
-            self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
-        else:
-            self._attr_color_mode = ColorMode.ONOFF
-            self._attr_supported_color_modes = {ColorMode.ONOFF}
+        #self._attr_color_mode = ColorMode.BRIGHTNESS
+        #self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+        self._attr_supported_features = FanEntityFeature.SET_SPEED
+        if not self._dimmable:
+            self._attr_supported_features = FanEntityFeature(0)
         self.async_register_callbacks()
          # Set the polling interval (e.g., every 30 seconds)
         self._polling_interval = timedelta(minutes=60)
@@ -130,19 +139,37 @@ class BusproLight(LightEntity):
         return self._hass.data[DATA_BUSPRO].connected
 
     @property
-    def brightness(self):
+    def percentage(self):
         """Return the brightness of the light."""
-        brightness = self._device.current_brightness / 100 * 255
-        return brightness
+        percentage = self._device.current_brightness
+        return percentage
+
+    @property
+    def speed_count(self) -> int:
+        """Return the number of speeds the fan supports."""
+        return int_states_in_range(SPEED_RANGE)
 
     @property
     def is_on(self):
         """Return true if light is on."""
         return self._device.is_on
 
-    async def async_turn_on(self, **kwargs):
+    #async def async_turn_on(self, **kwargs):
+
+
+    async def async_set_percentage(self, percentage: int) -> None:
+        """Set the speed percentage of the fan."""
+        brightness = percentage
+
+        if not self.is_on and self._device.previous_brightness is not None and brightness == 100:
+            brightness = self._device.previous_brightness
+
+        await self._device.set_brightness(brightness, self._running_time)
+
+
+    async def async_turn_on(self, speed: Optional[str] = None, percentage: Optional[int] = None, preset_mode: Optional[str] = None, **kwargs: Any) -> None:
         """Instruct the light to turn on."""
-        brightness = int(kwargs.get(ATTR_BRIGHTNESS, 255) / 255 * 100)
+        brightness = int(kwargs.get(ATTR_PERCENTAGE, 255) / 255 * 100)
 
         if not self.is_on and self._device.previous_brightness is not None and brightness == 100:
             brightness = self._device.previous_brightness

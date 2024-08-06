@@ -2,7 +2,7 @@ import asyncio
 
 # from ..helpers.generics import Generics
 from .control import _ReadSensorStatus, _ReadStatusOfUniversalSwitch, _ReadStatusOfChannels, _ReadFloorHeatingStatus, \
-    _ReadDryContactStatus, _ReadSensorsInOneStatus
+    _ReadDryContactStatus, _ReadSensorsInOneStatus, _ReadMotionSensorStatus
 from .device import Device
 from ..helpers.enums import *
 
@@ -45,7 +45,11 @@ class Sensor(Device):
             self._dry_contact_2_status = telegram.payload[7]
             if success_or_fail == SuccessOrFailure.Success:
                 self._brightness = brightness_high + brightness_low
-                self._call_device_updated()
+            self._call_device_updated()
+
+        elif telegram.operate_code == OperateCode.ReadMotionSensorStatusResponse:
+            self._motion_sensor = telegram.payload[3]
+            self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.ReadSensorsInOneStatusResponse:
             self._current_temperature = telegram.payload[1]
@@ -55,20 +59,21 @@ class Sensor(Device):
             self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.BroadcastSensorStatusResponse:
-            self._current_temperature = telegram.payload[0]
-            brightness_high = telegram.payload[1]
-            brightness_low = telegram.payload[2]
-            self._motion_sensor = telegram.payload[3]
-            self._sonic = telegram.payload[4]
-            self._dry_contact_1_status = telegram.payload[5]
-            self._dry_contact_2_status = telegram.payload[6]
-            self._brightness = brightness_high + brightness_low
-            self._call_device_updated()
+            if(len(telegram.payload>0)):
+                self._current_temperature = telegram.payload[0]
+                brightness_high = telegram.payload[1]
+                brightness_low = telegram.payload[2]
+                self._motion_sensor = telegram.payload[3]
+                self._sonic = telegram.payload[4]
+                self._dry_contact_1_status = telegram.payload[5]
+                self._dry_contact_2_status = telegram.payload[6]
+                self._brightness = brightness_high + brightness_low
+                self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.BroadcastSensorStatusAutoResponse:
             self._current_temperature = telegram.payload[0]
-            if self._device == "12in1":
-                self._current_temperature = self._current_temperature - 20
+            #if self._device == "12in1":
+             #   self._current_temperature = self._current_temperature - 20
             
             brightness_high = telegram.payload[1]
             brightness_low = telegram.payload[2]
@@ -109,9 +114,10 @@ class Sensor(Device):
                 self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.ReadStatusOfChannelsResponse:
-            if self._channel_number <= telegram.payload[0]:
-                self._channel_status = telegram.payload[self._channel_number]
-                self._call_device_updated()
+            if self._channel_number:
+                if self._channel_number <= telegram.payload[0]:
+                    self._channel_status = telegram.payload[self._channel_number]
+                    self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.SingleChannelControlResponse:
             if self._channel_number == telegram.payload[0]:
@@ -147,10 +153,15 @@ class Sensor(Device):
             rsios = _ReadSensorsInOneStatus(self._buspro)
             rsios.subnet_id, rsios.device_id = self._device_address
             await rsios.send()
-        else:
+        elif self._device is not None and self._device == "pir":#CMS-PIR Motion Only Fetch
+            rms = _ReadMotionSensorStatus(self._buspro)
+            rms.subnet_id, rms.device_id = self._device_address
+            await rms.send()
+        else:#8 in 1
             rss = _ReadSensorStatus(self._buspro)
             rss.subnet_id, rss.device_id = self._device_address
             await rss.send()
+
 
     @property
     def temperature(self):
@@ -159,9 +170,11 @@ class Sensor(Device):
         if self._device is not None and self._device == "dlp":
             return self._current_temperature
         if self._device is not None and self._device == "12in1":
-            return self._current_temperature
-        return self._current_temperature - 20
-
+            return self._current_temperature - 20
+        if self._device is not None and self._device == "8in1":
+            return self._current_temperature - 20
+        #return self._current_temperature - 20 #removed this offset of 20 degree
+        return self._current_temperature
     @property
     def brightness(self):
         if self._brightness is None:
@@ -170,9 +183,13 @@ class Sensor(Device):
 
     @property
     def movement(self):
-        if self._motion_sensor == 1 or self._sonic == 1:
+        if self._motion_sensor == 1:
             return True
-        if self._motion_sensor == 0 and self._sonic == 0:
+        if self._sonic == 1:
+            return True
+        if self._motion_sensor == 0:
+            return False
+        if self._sonic == 0:
             return False
 
     @property

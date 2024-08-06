@@ -30,7 +30,8 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CONF_DEVICE_CLASS = "None"
 DEFAULT_CONF_SCAN_INTERVAL = 0
-
+DEFAULT_CONF_DEVICE= "None"
+CONF_DEVICE = "device"
 CONF_MOTION = 'motion'
 CONF_DRY_CONTACT_1 = 'dry_contact_1'
 CONF_DRY_CONTACT_2 = 'dry_contact_2'
@@ -55,6 +56,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
                 vol.Required(CONF_NAME): cv.string,
                 vol.Required(CONF_TYPE): vol.In(SENSOR_TYPES),
                 vol.Optional(CONF_DEVICE_CLASS, default=DEFAULT_CONF_DEVICE_CLASS): cv.string,
+                vol.Optional(CONF_DEVICE, default=DEFAULT_CONF_DEVICE): cv.string,
                 vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_CONF_SCAN_INTERVAL): cv.string,
             })
         ])
@@ -75,6 +77,7 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
         name = device_config[CONF_NAME]
         sensor_type = device_config[CONF_TYPE]
         device_class = device_config[CONF_DEVICE_CLASS]
+        device=device_config[CONF_DEVICE]
         universal_switch_number = None
         channel_number = None
         switch_number = None
@@ -108,7 +111,7 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
                             format(name, device_address, sensor_type, device_class))
 
         sensor = Sensor(hdl, device_address, universal_switch_number=universal_switch_number,
-                        channel_number=channel_number, switch_number=switch_number, name=name)
+                        channel_number=channel_number,device=device, switch_number=switch_number, name=name)
 
         devices.append(BusproBinarySensor(hass, sensor, sensor_type, device_class, interval))
 
@@ -148,7 +151,7 @@ class BusproBinarySensor(BinarySensorEntity):
         return self._should_poll
 
     async def async_update(self):
-        if self._sensor_type == CONF_UNIVERSAL_SWITCH:
+        if self._sensor_type == CONF_UNIVERSAL_SWITCH or self._sensor_type == CONF_MOTION:
             await self._device.read_sensor_status()
 
     @property

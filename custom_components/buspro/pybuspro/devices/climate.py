@@ -1,21 +1,17 @@
 import asyncio
 
-from .control import _ReadFloorHeatingStatus, _ControlFloorHeatingStatus
+from .control import _ReadPanelAC, _ControlPanelAC
 from .device import Device
 from ..helpers.enums import *
 from ..helpers.generics import Generics
 
 
-class ControlFloorHeatingStatus:
+class ControlPanelAC:
     def __init__(self):
-        self.temperature_type = None
         self.status = None
         self.mode = None
         self.normal_temperature = None
-        self.day_temperature = None
-        self.night_temperature = None
-        self.away_temperature = None
-
+        
 
 class Climate(Device):
     def __init__(self, buspro, device_address, name=""):
@@ -23,43 +19,34 @@ class Climate(Device):
 
         self._buspro = buspro
         self._device_address = device_address
-
-        self._temperature_type = None   # Celsius/Fahrenheit
         self._status = None             # On/Off
-        self._mode = None               # 1/2/3/4/5 (Normal/Day/Night/Away/Timer)
+        self._mode= None
         self._current_temperature = None
         self._normal_temperature = None
-        self._day_temperature = None
-        self._night_temperature = None
-        self._away_temperature = None
-
+        
         self.register_telegram_received_cb(self._telegram_received_cb)
-        self._call_read_current_heating_status(run_from_init=True)
+        self._call_read_current_panel_status(run_from_init=True)
+        self._call_read_current_panel_temp(run_from_init=True)
 
     def _telegram_received_cb(self, telegram):
-        if telegram.operate_code == OperateCode.ReadFloorHeatingStatusResponse:
-            self._temperature_type = telegram.payload[0]
-            self._current_temperature = telegram.payload[1]
-            self._status = telegram.payload[2]
-            self._mode = telegram.payload[3]
-            self._normal_temperature = telegram.payload[4]
-            self._day_temperature = telegram.payload[5]
-            self._night_temperature = telegram.payload[6]
-            self._away_temperature = telegram.payload[7]
-            self._call_device_updated()
+        if telegram.operate_code == OperateCode.ReadPanelACResponse:
+            if telegram.payload[0]==3:
+                self._status = telegram.payload[1]
+                self._mode = telegram.payload[1]
+                self._call_device_updated()
+            elif telegram.payload[0]==4:
+                self._current_temperature = telegram.payload[1]
+                self._normal_temperature = telegram.payload[1]
+                self._call_device_updated()
 
-        elif telegram.operate_code == OperateCode.ControlFloorHeatingStatusResponse:
-            success_or_fail = telegram.payload[0]
-            self._temperature_type = telegram.payload[1]
-            self._status = telegram.payload[2]
-            self._mode = telegram.payload[3]
-            self._normal_temperature = telegram.payload[4]
-            self._day_temperature = telegram.payload[5]
-            self._night_temperature = telegram.payload[6]
-            self._away_temperature = telegram.payload[7]
-            self._call_device_updated()
-
-            if success_or_fail == SuccessOrFailure.Success:
+        elif telegram.operate_code == OperateCode.ControlPanelACResponse:
+            if telegram.payload[0]==3:
+                self._status = telegram.payload[1]
+                self._mode = telegram.payload[1]
+                self._call_device_updated()
+            elif telegram.payload[0]==4:
+                self._current_temperature = telegram.payload[1]
+                self._normal_temperature = telegram.payload[1]
                 self._call_device_updated()
 
         elif telegram.operate_code == OperateCode.BroadcastTemperatureResponse:
@@ -67,85 +54,163 @@ class Climate(Device):
             self._current_temperature = telegram.payload[1]
             self._call_device_updated()
 
-    async def read_heating_status(self):
-        rfhs = _ReadFloorHeatingStatus(self._buspro)
+    async def read_status(self):
+        rfhs = _ReadPanelAC(self._buspro)
         rfhs.subnet_id, rfhs.device_id = self._device_address
+        rfhs.command=3 #read status on off
         await rfhs.send()
 
-    def _telegram_received_control_heating_status_cb(self, telegram, floor_heating_status):
+    async def read_temperature(self):
+        rfhs = _ReadPanelAC(self._buspro)
+        rfhs.subnet_id, rfhs.device_id = self._device_address
+        rfhs.command=4 #read temperature
+        await rfhs.send()
 
-        if telegram.operate_code == OperateCode.ReadFloorHeatingStatusResponse:
+    def _telegram_received_control_ac_status_cb(self, telegram, panel_status):
+
+        if telegram.operate_code == OperateCode.ReadPanelACResponse:
             self.unregister_telegram_received_cb(
-                self._telegram_received_control_heating_status_cb, floor_heating_status)
+                self._telegram_received_control_ac_status_cb, panel_status)
+            if telegram.payload[0]==3:
+                self._status = telegram.payload[1]
+                self._mode = telegram.payload[1]
+            elif telegram.payload[0]==4:
+                self._current_temperature = telegram.payload[1]
+                self._normal_temperature = telegram.payload[1]
 
-            temperature_type = telegram.payload[0]
-            # current_temperature = telegram.payload[1]
-            status = telegram.payload[2]
-            mode = telegram.payload[3]
-            normal_temperature = telegram.payload[4]
-            day_temperature = telegram.payload[5]
-            night_temperature = telegram.payload[6]
-            away_temperature = telegram.payload[7]
+        
+            if hasattr(panel_status, 'status'):
+                if panel_status.status is not None:
+                    status = panel_status.status
+                    mode = panel_status.status
+                    command = 3
+            if hasattr(panel_status, 'mode'):
+                if panel_status.mode is not None:
+                    mode = panel_status.mode
+                    status=panel_status.mode
+                    command = 3
+            normal_temperature=None
+            _current_temperature=None
+            if hasattr(panel_status, 'normal_temperature'):
+                if panel_status.normal_temperature is not None:
+                    normal_temperature = panel_status.normal_temperature
+                    command = 4
+            if hasattr(panel_status, '_current_temperature'):
+                if panel_status._current_temperature is not None:
+                    _current_temperature = panel_status._current_temperature
+                    command = 4
+            if normal_temperature is None:
+                normal_temperature=_current_temperature
 
-            if hasattr(floor_heating_status, 'temperature_type'):
-                if floor_heating_status.temperature_type is not None:
-                    temperature_type = floor_heating_status.temperature_type
-            if hasattr(floor_heating_status, 'status'):
-                if floor_heating_status.status is not None:
-                    status = floor_heating_status.status
-            if hasattr(floor_heating_status, 'mode'):
-                if floor_heating_status.mode is not None:
-                    mode = floor_heating_status.mode
-            if hasattr(floor_heating_status, 'normal_temperature'):
-                if floor_heating_status.normal_temperature is not None:
-                    normal_temperature = floor_heating_status.normal_temperature
-            if hasattr(floor_heating_status, 'day_temperature'):
-                if floor_heating_status.day_temperature is not None:
-                    day_temperature = floor_heating_status.day_temperature
-            if hasattr(floor_heating_status, 'night_temperature'):
-                if floor_heating_status.night_temperature is not None:
-                    night_temperature = floor_heating_status.night_temperature
-            if hasattr(floor_heating_status, 'away_temperature'):
-                if floor_heating_status.away_temperature is not None:
-                    away_temperature = floor_heating_status.away_temperature
+            if mode is None:
+                mode=normal_temperature
 
-            cfhs_ = _ControlFloorHeatingStatus(self._buspro)
+            cfhs_ = _ControlPanelAC(self._buspro)
             cfhs_.subnet_id, cfhs_.device_id = self._device_address
-            cfhs_.temperature_type = temperature_type
-            cfhs_.status = status
+            cfhs_.command = command
             cfhs_.mode = mode
-            cfhs_.normal_temperature = normal_temperature
-            cfhs_.day_temperature = day_temperature
-            cfhs_.night_temperature = night_temperature
-            cfhs_.away_temperature = away_temperature
 
-            async def send_control_floor_heating_status(cfhs__):
+            async def send_control_panel_status(cfhs__):
                 await cfhs__.send()
 
-            asyncio.ensure_future(send_control_floor_heating_status(cfhs_), loop=self._buspro.loop)
+            asyncio.ensure_future(send_control_panel_status(cfhs_), loop=self._buspro.loop)
 
-    async def control_heating_status(self, floor_heating_status: ControlFloorHeatingStatus):
-        self.register_telegram_received_cb(self._telegram_received_control_heating_status_cb, floor_heating_status)
-        rfhs = _ReadFloorHeatingStatus(self._buspro)
+    async def control_ac_temperature(self, panel_status: ControlPanelAC):
+        self.register_telegram_received_cb(self._telegram_received_control_ac_status_cb, panel_status)
+        rfhs = _ControlPanelAC(self._buspro)
         rfhs.subnet_id, rfhs.device_id = self._device_address
+        rfhs.command=4
+        normal_temperature=None
+        _current_temperature=None
+        mode=None
+        status=None
+        if hasattr(panel_status, 'status'):
+            if panel_status.status is not None:
+                status = panel_status.status
+                mode = panel_status.status
+                command = 3
+        if hasattr(panel_status, 'mode'):
+            if panel_status.mode is not None:
+                mode = panel_status.mode
+                status=panel_status.mode
+                command = 3
+        if hasattr(panel_status, 'normal_temperature'):
+            if panel_status.normal_temperature is not None:
+                normal_temperature = panel_status.normal_temperature
+                command = 4
+        if hasattr(panel_status, '_current_temperature'):
+            if panel_status._current_temperature is not None:
+                _current_temperature = panel_status._current_temperature
+                command = 4
+        if normal_temperature is None:
+            normal_temperature=_current_temperature
+
+        if mode is None:
+            mode=normal_temperature
+        rfhs.mode=mode
         await rfhs.send()
 
-    def _call_read_current_heating_status(self, run_from_init=False):
+    async def control_ac_status(self, panel_status: ControlPanelAC):
+        self.register_telegram_received_cb(self._telegram_received_control_ac_status_cb, panel_status)
+        rfhs = _ControlPanelAC(self._buspro)
+        rfhs.subnet_id, rfhs.device_id = self._device_address
+        rfhs.command=3
+        normal_temperature=None
+        _current_temperature=None
+        if hasattr(panel_status, 'status'):
+            if panel_status.status is not None:
+                status = panel_status.status
+                mode = panel_status.status
+                command = 3
+        if hasattr(panel_status, 'mode'):
+            if panel_status.mode is not None:
+                mode = panel_status.mode
+                status=panel_status.mode
+                command = 3
+        if hasattr(panel_status, 'normal_temperature'):
+            if panel_status.normal_temperature is not None:
+                normal_temperature = panel_status.normal_temperature
+                command = 4
+        if hasattr(panel_status, '_current_temperature'):
+            if panel_status._current_temperature is not None:
+                _current_temperature = panel_status._current_temperature
+                command = 4
+        if normal_temperature is None:
+            normal_temperature=_current_temperature
 
-        async def read_current_heating_status():
+        if mode is None:
+            mode=normal_temperature
+        rfhs.mode=mode
+        await rfhs.send()
+
+    def _call_read_current_panel_status(self, run_from_init=False):
+
+        async def read_current_panel_status():
             if run_from_init:
                 await asyncio.sleep(5)
 
-            rfhs = _ReadFloorHeatingStatus(self._buspro)
+            rfhs = _ReadPanelAC(self._buspro)
             rfhs.subnet_id, rfhs.device_id = self._device_address
+            rfhs.command=3
             await rfhs.send()
 
-        asyncio.ensure_future(read_current_heating_status(), loop=self._buspro.loop)
+        asyncio.ensure_future(read_current_panel_status(), loop=self._buspro.loop)
+    def _call_read_current_panel_temp(self, run_from_init=False):
 
+        async def read_current_panel_temp():
+            if run_from_init:
+                await asyncio.sleep(5)
+
+            rfhs = _ReadPanelAC(self._buspro)
+            rfhs.subnet_id, rfhs.device_id = self._device_address
+            rfhs.command=4
+            await rfhs.send()
+
+        asyncio.ensure_future(read_current_panel_temp(), loop=self._buspro.loop)
     @property
     def unit_of_measurement(self):
         generics = Generics()
-        return generics.get_enum_value(TemperatureType, self._temperature_type)
+        return generics.get_enum_value(TemperatureType, 0)
 
     @property
     def is_on(self):
@@ -161,30 +226,12 @@ class Climate(Device):
     @property
     def temperature(self):
         return self._current_temperature
-
+    
     @property
-    def day_temperature(self):
-        return self._day_temperature
-
-    @property
-    def night_temperature(self):
-        return self._night_temperature
-
-    @property
-    def away_temperature(self):
-        return self._away_temperature
+    def target_temperature(self):
+        return self._current_temperature
 
     @property
     def device_identifier(self):
         return f"{self._device_address}"
 
-    @property
-    def target_temperature(self):
-        if self._mode == TemperatureMode.Normal.value:
-            return self._normal_temperature
-        elif self._mode == TemperatureMode.Day.value:
-            return self._day_temperature
-        elif self._mode == TemperatureMode.Away.value:
-            return self._away_temperature
-        elif self._mode == TemperatureMode.Night.value:
-            return self._night_temperature

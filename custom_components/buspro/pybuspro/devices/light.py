@@ -1,4 +1,5 @@
-﻿from .control import _SingleChannelControl
+﻿import asyncio
+from .control import _SingleChannelControl, _ReadStatusOfChannels
 from .device import Device
 from ..helpers.enums import *
 from ..helpers.generics import Generics
@@ -50,7 +51,9 @@ class Light(Device):
         await self._set(intensity, running_time_seconds)
 
     async def read_status(self):
-        raise NotImplementedError
+        scc = _ReadStatusOfChannels(self._buspro)
+        scc.subnet_id, scc.device_id = self._device_address
+        await scc.send()
 
     @property
     def device_identifier(self):
@@ -93,3 +96,14 @@ class Light(Device):
     def _set_previous_brightness(self, brightness):
         if self.supports_brightness and brightness > 0:
             self._previous_brightness = brightness
+    
+    def _call_read_current_status_of_channels(self, run_from_init=False):
+
+        async def read_current_status_of_channels():
+            if run_from_init:
+                await asyncio.sleep(10)
+            scc = _ReadStatusOfChannels(self._buspro)
+            scc.subnet_id, scc.device_id = self._device_address
+            await scc.send()
+
+        asyncio.ensure_future(read_current_status_of_channels(), loop=self._buspro.loop)
