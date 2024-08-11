@@ -169,13 +169,13 @@ class BusproCover(CoverEntity):
             await self._device.read_status()
         self.async_write_ha_state()
     
-    async def async_update(self, now=None):
+    async def async_update(self, *args):
         """Fetch new state data for this light."""
         await self.async_read_status()
 
-    async def async_update(self):
-        """Fetch new state data for this light."""
-        await self.async_read_status()
+#    async def async_update(self):
+ #       """Fetch new state data for this light."""
+  #      await self.async_read_status()
     
     async def async_set_cover_position(self, **kwargs):
         position = int(kwargs.get(ATTR_POSITION))

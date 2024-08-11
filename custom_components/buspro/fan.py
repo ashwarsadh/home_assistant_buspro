@@ -95,9 +95,9 @@ class BusproFan(FanEntity):
         self._dimmable = dimmable
         #self._attr_color_mode = ColorMode.BRIGHTNESS
         #self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
-        self._attr_supported_features = FanEntityFeature.SET_SPEED
+        self._attr_supported_features = FanEntityFeature.SET_SPEED | FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
         if not self._dimmable:
-            self._attr_supported_features = FanEntityFeature(0)
+            self._attr_supported_features = FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
         self.async_register_callbacks()
          # Set the polling interval (e.g., every 30 seconds)
         self._polling_interval = timedelta(minutes=60)
