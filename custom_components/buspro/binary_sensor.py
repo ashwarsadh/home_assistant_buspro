@@ -150,7 +150,7 @@ class BusproBinarySensor(BinarySensorEntity):
         """No polling needed within Buspro."""
         return self._should_poll
 
-    async def async_update(self):
+    async def async_update(self, *args):
         if self._sensor_type == CONF_UNIVERSAL_SWITCH or self._sensor_type == CONF_MOTION:
             await self._device.read_sensor_status()
 

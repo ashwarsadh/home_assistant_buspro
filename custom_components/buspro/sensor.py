@@ -132,7 +132,7 @@ class BusproSensor(Entity):
         """No polling needed within Buspro unless explicitly set."""
         return self._should_poll
 
-    async def async_update(self):
+    async def async_update(self, *args):
         await self._device.read_sensor_status()
 
     @property

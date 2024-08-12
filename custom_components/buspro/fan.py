@@ -120,7 +120,7 @@ class BusproFan(FanEntity):
         """No polling needed within Buspro."""
         return True
 
-    async def async_update(self, now=None):
+    async def async_update(self, *args):
         """Fetch new state data for this light."""
         await self.async_read_status()
 

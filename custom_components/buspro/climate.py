@@ -178,12 +178,7 @@ class BusproClimate(ClimateEntity):
         """No polling needed within Buspro."""
         return True
 
-    async def async_update(self, now=None):
-        """Fetch new state data for this light."""
-        await self.async_read_status()
-        await self.async_read_temperature()
-
-    async def async_update(self):
+    async def async_update(self, *args):
         """Fetch new state data for this light."""
         await self.async_read_status()
         await self.async_read_temperature()
