@@ -80,6 +80,33 @@ class _Control:
             operate_code = OperateCode.ControlPanelAC
             payload = [control.command, control.mode]
 
+        elif type(control) == _ReadFloorHeatingStatusNew:
+            operate_code = OperateCode.ReadFloorHeatingStatusNew
+            payload = [control.channel]
+
+        elif type(control) == _ControlFloorHeatingStatusNew:
+            operate_code = OperateCode.ControlFloorHeatingStatusNew
+            payload = [
+                control.channel,
+                (control.work_type << 4) | (1 if control.work_status else 0),
+                control.temperature_type,
+                control.mode,
+                control.temp_normal,
+                control.temp_day,
+                control.temp_night,
+                control.temp_away,
+                1 if control.valve else 0,
+                control.watering_time
+            ]
+
+        elif type(control) == _ReadFloorHeatingTemperatureNew:
+            operate_code = OperateCode.ReadFloorHeatingTemperatureNew
+            payload = [control.channel]
+
+        elif type(control) == _ReadFloorHeatingTemperatureLegacy:
+            operate_code = OperateCode.ReadFloorHeatingTemperatureLegacy
+            payload = [control.channel]
+
 
         else:
             return None
@@ -213,3 +240,37 @@ class _ReadDryContactStatus(_Control):
         super().__init__(buspro)
 
         self.switch_number = None
+
+
+class _ReadFloorHeatingStatusNew(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        self.channel = None
+
+
+class _ControlFloorHeatingStatusNew(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        self.channel = None
+        self.work_type = 0
+        self.work_status = True
+        self.temperature_type = 0
+        self.mode = 1
+        self.temp_normal = 25
+        self.temp_day = 25
+        self.temp_night = 25
+        self.temp_away = 25
+        self.valve = 0
+        self.watering_time = 0
+
+
+class _ReadFloorHeatingTemperatureNew(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        self.channel = None
+
+
+class _ReadFloorHeatingTemperatureLegacy(_Control):
+    def __init__(self, buspro):
+        super().__init__(buspro)
+        self.channel = None

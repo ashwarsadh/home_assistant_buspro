@@ -1,4 +1,4 @@
-"""
+﻿"""
 This component provides light support for Buspro.
 
 For more details about this platform, please refer to the documentation at
@@ -6,6 +6,8 @@ https://home-assistant.io/components/...
 """
 
 import logging
+import time
+import asyncio
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -86,6 +88,12 @@ class BusproLight(LightEntity):
         
         # <--- OPTIMISTIC MODE: Initialize the override variable
         self._optimistic_brightness = None 
+        self._optimistic_timeout = 0
+
+        # <--- DEBOUNCE/HYSTERESIS STATE
+        self._debounced_is_on = None
+        self._debounced_brightness = 0
+        self._debounce_task = None
 
         if self._dimmable:
             self._attr_color_mode = ColorMode.BRIGHTNESS
@@ -105,35 +113,81 @@ class BusproLight(LightEntity):
 
         async def after_update_callback(device):
             """Call after device was updated."""
+            hardware_is_on = device.is_on
+            hardware_brightness = (device.current_brightness / 100 * 255) if device.current_brightness is not None else 0
+            _LOGGER.info(f"DEBUG_BUSPRO_LIGHT_CB: {self.name} callback: hardware_is_on={hardware_is_on}, hardware_brightness={hardware_brightness}, current_debounced={self._debounced_is_on}")
             
-            if self._optimistic_brightness is not None:
-                if self._dimmable:
-                    # Check if hardware reached target brightness
-                    target_hdl = int(self._optimistic_brightness / 255 * 100)
-                    if device.current_brightness == target_hdl:
-                        self._optimistic_brightness = None
-                else:
-                    # Check ON/OFF for non-dimmable
-                    hardware_is_on = device.is_on
-                    target_is_on = (self._optimistic_brightness > 0)
-                    if hardware_is_on == target_is_on:
-                        self._optimistic_brightness = None
+            # Initialize debounced state on first read - write state once
+            if self._debounced_is_on is None:
+                self._debounced_is_on = hardware_is_on
+                self._debounced_brightness = hardware_brightness
+                self.async_write_ha_state()
+                return
 
-            self.async_write_ha_state()
+            # Check if optimistic mode has expired
+            if self._optimistic_brightness is not None:
+                if time.time() > self._optimistic_timeout:
+                    self._optimistic_brightness = None
+
+            # Asymmetric hysteresis debounce:
+            #   ON transitions:  2s delay  (light appears quickly when turned on)
+            #   OFF transitions: 20s delay (prevents PIR-triggered lights from flickering
+            #                               out of the active list when sensors re-trigger)
+            # User-initiated on/off bypass this entirely via optimistic state in async_turn_on/off.
+            DEBOUNCE_ON_SECS  = 4.0
+            DEBOUNCE_OFF_SECS = 4.0
+
+            if hardware_is_on == self._debounced_is_on:
+                # Hardware confirmed current stable state ? cancel any pending reversal
+                if self._debounce_task is not None:
+                    self._debounce_task.cancel()
+                    self._debounce_task = None
+                # Update brightness immediately if it changed while staying ON
+                if hardware_is_on and hardware_brightness != self._debounced_brightness:
+                    self._debounced_brightness = hardware_brightness
+                    if self._optimistic_brightness is None:
+                        self.async_write_ha_state()
+            else:
+                # Hardware disagrees ? start/reset debounce timer
+                # Always cancel + restart so repeated flaps extend the window
+                if self._debounce_task is not None:
+                    self._debounce_task.cancel()
+                    self._debounce_task = None
+
+                delay = DEBOUNCE_ON_SECS if hardware_is_on else DEBOUNCE_OFF_SECS
+
+                async def _do_debounce(target_on, target_bright, wait):
+                    try:
+                        await asyncio.sleep(wait)
+                        prev_is_on = self._debounced_is_on
+                        prev_brightness = self._debounced_brightness
+                        self._debounced_is_on = target_on
+                        self._debounced_brightness = target_bright if target_on else 0
+                        self._debounce_task = None
+                        # Only write state if something actually changed
+                        if self._debounced_is_on != prev_is_on or self._debounced_brightness != prev_brightness:
+                            if self._optimistic_brightness is None:
+                                self.async_write_ha_state()
+                    except asyncio.CancelledError:
+                        pass
+
+                self._debounce_task = self.hass.async_create_task(
+                    _do_debounce(hardware_is_on, hardware_brightness, delay)
+                )
+            # NOTE: Do NOT call async_write_ha_state() unconditionally here.
+            # State is written only when the debounced value actually changes.
+
 
         self._device.register_device_updated_cb(after_update_callback)
 
     @property
     def should_poll(self):
         """No polling needed within Buspro."""
-        return False # Changed to False because we use callbacks, but keeping True is fine too if needed.
+        return True # Changed to True to keep Google Assistant 'online' and sync state.
 
     async def async_update(self, *args):
         """Fetch new state data for this light asynchronously."""
-        # FIRE AND FORGET: Ask HDL for state, but return instantly.
-        # When HDL responds, pybuspro's telegram callback will automatically
-        # trigger after_update_callback and refresh the UI later.
-        self.hass.async_create_task(self._device.read_status())
+        await self.async_read_status()
 
     @property
     def name(self):
@@ -148,9 +202,16 @@ class BusproLight(LightEntity):
     @property
     def brightness(self):
         """Return the brightness of the light."""
-        # <--- OPTIMISTIC MODE: Return fake brightness if pending
+        # 1. OPTIMISTIC MODE: Return fake brightness if pending
         if self._optimistic_brightness is not None:
-            return self._optimistic_brightness
+            if time.time() > self._optimistic_timeout:
+                self._optimistic_brightness = None
+            else:
+                return self._optimistic_brightness
+
+        # 2. DEBOUNCE MODE: Return last stable hardware state
+        if self._debounced_is_on is not None:
+            return self._debounced_brightness
 
         # Standard Logic
         if self._device.current_brightness is None:
@@ -161,10 +222,17 @@ class BusproLight(LightEntity):
     @property
     def is_on(self):
         """Return true if light is on."""
-        # <--- OPTIMISTIC MODE: Return fake state if pending
+        # 1. OPTIMISTIC MODE: Return fake state if pending
         if self._optimistic_brightness is not None:
-            return self._optimistic_brightness > 0
+            if time.time() > self._optimistic_timeout:
+                self._optimistic_brightness = None
+            else:
+                return self._optimistic_brightness > 0
             
+        # 2. DEBOUNCE MODE: Return last stable hardware state
+        if self._debounced_is_on is not None:
+            return self._debounced_is_on
+
         return self._device.is_on
 
     async def async_turn_on(self, **kwargs):
@@ -174,26 +242,53 @@ class BusproLight(LightEntity):
 
         if not self.is_on and self._device.previous_brightness is not None and hdl_brightness == 100:
             hdl_brightness = self._device.previous_brightness
+            target_ha_brightness = int(hdl_brightness / 100 * 255)
+
+        # Cancel any pending debounce task instantly
+        if self._debounce_task is not None:
+            self._debounce_task.cancel()
+            self._debounce_task = None
+        self._debounced_is_on = True
+        self._debounced_brightness = target_ha_brightness
 
         # 1. Update HA instantly so Google Home sees the change immediately
         self._optimistic_brightness = target_ha_brightness
+        self._optimistic_timeout = time.time() + self._running_time + 4.0
         self.async_write_ha_state()
 
-        # 2. FIRE AND FORGET: Send command to HDL in the background
-        self.hass.async_create_task(
-            self._device.set_brightness(hdl_brightness, self._running_time)
-        )
+        # 2. Send command to HDL and await it so Google Assistant knows it's sent
+        await self._device.set_brightness(hdl_brightness, self._running_time)
+        
+        # 3. If fading, schedule a status read after it completes
+        if self._running_time > 0:
+            async def _update_after_fade():
+                await asyncio.sleep(self._running_time + 1.5)
+                await self._device.read_status()
+            self.hass.async_create_task(_update_after_fade())
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
+        # Cancel any pending debounce task instantly
+        if self._debounce_task is not None:
+            self._debounce_task.cancel()
+            self._debounce_task = None
+        self._debounced_is_on = False
+        self._debounced_brightness = 0
+
         # 1. Update HA instantly so Google Home sees the change immediately
         self._optimistic_brightness = 0
+        self._optimistic_timeout = time.time() + self._running_time + 4.0
         self.async_write_ha_state()
 
-        # 2. FIRE AND FORGET: Send command to HDL in the background
-        self.hass.async_create_task(
-            self._device.set_off(self._running_time)
-        )
+        # 2. Send command to HDL and await it so Google Assistant knows it's sent
+        await self._device.set_off(self._running_time)
+
+        # 3. If fading, schedule a status read after it completes
+        if self._running_time > 0:
+            async def _update_after_fade():
+                await asyncio.sleep(self._running_time + 1.5)
+                await self._device.read_status()
+            self.hass.async_create_task(_update_after_fade())
     @property
     def unique_id(self):
         """Return the unique id."""

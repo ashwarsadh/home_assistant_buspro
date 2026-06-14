@@ -77,7 +77,10 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
         name = device_config[CONF_NAME]
         sensor_type = device_config[CONF_TYPE]
         device_class = device_config[CONF_DEVICE_CLASS]
-        device=device_config[CONF_DEVICE]
+        device = device_config[CONF_DEVICE]
+        if sensor_type == CONF_DRY_CONTACT and (device is None or device == "None"):
+            device = "dry_contact"
+
         universal_switch_number = None
         channel_number = None
         switch_number = None

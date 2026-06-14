@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from .control import _SingleChannelControl, _ReadStatusOfChannels
 from .device import Device
 from ..helpers.enums import *
@@ -34,6 +34,7 @@ class Light(Device):
         elif telegram.operate_code == OperateCode.ReadStatusOfChannelsResponse:
             if self._channel <= telegram.payload[0]:
                 self._brightness = telegram.payload[self._channel]
+                print(f"DEBUG_PYBUSPRO_LIGHT: {self._name} (ch {self._channel}) set brightness to {self._brightness} from payload index {self._channel}", flush=True)
                 self._set_previous_brightness(self._brightness)
                 self._call_device_updated()
         elif telegram.operate_code == OperateCode.SceneControlResponse:

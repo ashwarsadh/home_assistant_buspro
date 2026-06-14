@@ -1,251 +1,213 @@
-# HDL Buspro
+# HDL Buspro Integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
-The HDL Buspro integration allows you to control your HDL Buspro system from Home Assistant.
+The **HDL Buspro** custom integration allows you to control and monitor your HDL Buspro / SmartBus home automation system from Home Assistant.
+
+---
+
+## Features
+
+- **Light Platform**: Dimmable and non-dimmable light controls with symmetric 4.0-second state debouncing and optimistic state synchronization to prevent flickering.
+- **Fan Platform**: Dimmable and non-dimmable fan controls, exposed correctly as Fans in Home Assistant and Google Assistant.
+- **Switch Platform**: Relays and binary switches.
+- **Cover Platform**: Time-based curtain and blind support with position feedback.
+- **Climate Platform**:
+  - **AC Control**: Control Air Conditioning units via DLP panel commands.
+  - **Floor Heating**: Modern support for HDL Floor Heating modules (e.g., `HDL-MFH06.432`) utilizing both legacy and float-based protocols.
+- **Sensors**: Temperature and illuminance (lux) readings from HDL sensors, with automatic temperature offset correction.
+- **Binary Sensors**: Motion detection and Dry Contacts (e.g., `sb-dry-4z`) with automatic query type detection.
+
+---
 
 ## Installation
-Under HACS -> Integrations, add custom repository "https://github.com/eyesoft/home_assistant_buspro/" with Category "Integration". Select the integration named "HDL Buspro" and download it.
 
-Restart Home Assistant.
+1. Open **HACS** (Home Assistant Community Store) in your Home Assistant panel.
+2. Go to **Integrations**, click the three dots in the top-right corner, and select **Custom repositories**.
+3. Add the URL of your repository: `https://github.com/ashwarsadh/home_assistant_buspro/` with the category **Integration**.
+4. Click **Download** on the newly added "HDL Buspro" integration.
+5. Restart Home Assistant.
+6. Navigate to **Settings > Devices & Services**, click **Add Integration**, search for **HDL Buspro**, and enter the IP gateway address and port number.
 
-Go to Settings > Integrations and Add Integration "HDL Buspro". Type in IP address and port number of the gateway.
+---
 
 ## Configuration
 
-#### Light platform
-   
-To use your Buspro light in your installation, add the following to your configuration.yaml file: 
+Add the platforms you wish to integrate into your `configuration.yaml`:
 
+### Light Platform
 ```yaml
 light:
   - platform: buspro
     running_time: 3
     devices:
       1.89.1:
-        name: Living Room Light
+        name: "Living Room Light"
         running_time: 5
       1.89.2:
-        name: Front Door Light
-        dimmable: False
+        name: "Front Door Light"
+        dimmable: false
 ```
-+ **running_time** _(int) (Optional)_: Default running time in seconds for all devices. Running time is 0 seconds if not set.
-+ **devices** _(Required)_: A list of devices to set up
-  + **X.X.X** _(Required)_: The address of the device on the format `<subnet ID>.<device ID>.<channel number>`
-    + **name** _(string) (Required)_: The name of the device
-    + **running_time** _(int) (Optional)_: The running time in seconds for the device. If omitted, the default running time for all devices is used.
-    + **dimmable** _(boolean) (Optional)_: Is the device dimmable? Default is True. 
+* **running_time** *(int) (Optional)*: Default running time in seconds.
+* **dimmable** *(boolean) (Optional)*: Set to `false` for non-dimmable/binary lights.
 
-#### Switch platform
+---
 
-To use your Buspro switch in your installation, add the following to your configuration.yaml file: 
-
+### Switch Platform
 ```yaml
 switch:
   - platform: buspro
     devices:
       1.89.1:
-        name: Living Room Switch
-      1.89.2:
-        name: Front Door Switch
+        name: "Living Room Switch"
 ```
-+ **devices** _(Required)_: A list of devices to set up
-  + **X.X.X** _(Required)_: The address of the device on the format `<subnet ID>.<device ID>.<channel number>`
-    + **name** _(string) (Required)_: The name of the device
 
-#### Fan platform
-   
-To use your Buspro Fan in your installation,same as light, but shows as Fan in HA UI and Google Assitant, allowing better controls and grouping.
-Add the following to your configuration.yaml file: 
+---
 
+### Fan Platform
 ```yaml
 fan:
   - platform: buspro
-    running_time: 3
     devices:
-      1.89.1:
-        name: Living Room Light
-        running_time: 5
-      1.89.2:
-        name: Front Door Light
-        dimmable: False
+      100.13.1:
+        name: "Kitchen Exhaust Fan"
+        dimmable: true
 ```
-+ **running_time** _(int) (Optional)_: Default running time in seconds for all devices. Running time is 0 seconds if not set.
-+ **devices** _(Required)_: A list of devices to set up
-  + **X.X.X** _(Required)_: The address of the device on the format `<subnet ID>.<device ID>.<channel number>`
-    + **name** _(string) (Required)_: The name of the device
-    + **running_time** _(int) (Optional)_: The running time in seconds for the device. If omitted, the default running time for all devices is used.
-    + **dimmable** _(boolean) (Optional)_: Is the device dimmable? Default is True. 
 
+---
 
-#### Sensor platform
-
-To use your Buspro sensor in your installation, add the following to your configuration.yaml file: 
-
+### Cover Platform
 ```yaml
-sensor:
+cover:
   - platform: buspro
     devices:
-      - address: 1.74
-        name: Living Room
-        type: temperature
-        unit_of_measurement: °C
-        device_class: temperature
-        device: dlp
-      - address: 1.74
-        name: Front Door
-        type: illuminance
-        unit_of_measurement: lux
+      100.221.1:
+        name: "Living Room Curtains"
+        opening_time: 20
 ```
-+ **devices** _(Required)_: A list of devices to set up
-  + **address** _(string) (Required)_: The address of the sensor device on the format `<subnet ID>.<device ID>`
-  + **name** _(string) (Required)_: The name of the device
-  + **type** _(string) (Required)_: Type of sensor to monitor. 
-    + Available sensors: 
-     + temperature
-     + illuminance
-  + **unit_of_measurement** _(string) (Optional)_: text to be displayed as unit of measurement
-  + **device_class** _(string) (Optional)_: HASS device class e.g., "temperature" 
-  (https://www.home-assistant.io/components/sensor/)
-  + **device** _(string) (Optional)_: The type of sensor device:
-    + dlp 
+* **opening_time** *(int) (Optional)*: The time in seconds it takes to completely open the curtain (used to calculate positioning).
 
+---
 
-#### Binary sensor platform
+### Climate Platform
 
-To use your Buspro binary sensor in your installation, add the following to your configuration.yaml file: 
-
-```yaml
-binary_sensor:
-  - platform: buspro
-    devices:
-      - address: 1.74
-        name: Living Room
-        type: motion
-        device_class: motion
-      - address: 1.74.100
-        name: Front Door
-        type: universal_switch
-      - address: 1.75.3
-        name: Kitchen switch
-        type: single_channel
-        device: pir
-```
-+ **devices** _(Required)_: A list of devices to set up
-  + **address** _(string) (Required)_: The address of the sensor device on the format `<subnet ID>.<device ID>`. If 
-  'type' = 'universal_switch' universal switch number must be appended to the address. 
-  + **name** _(string) (Required)_: The name of the device
-  + **type** _(string) (Required)_: Type of sensor to monitor. 
-    + Available sensors: 
-      + motion 
-      + dry_contact_1 
-      + dry_contact_2
-      + universal_switch
-      + single_channel
-  + **device_class** _(string) (Optional)_: HASS device class e.g., "motion" 
-  (https://www.home-assistant.io/components/binary_sensor/)
-   + **device** _(string) (Optional)_: The type of sensor device:
-    + pir
-    + 8in1
-    + 12in1
-
-Older Devices like CMS-PIR are supported via PIR
-
-#### Climate platform
-
-To use your Buspro panel climate control in your installation, add the following to your configuration.yaml file: 
-
-Added Support for AC Control via DLP Panel command, we need to mention Subnet and Device ID of Room DLP Panel which can be used to control  the AC.
-I have removed Floor Heating and Heating Modes for my needs, but someone requiring Floor heating instead of Air Conditioner use climate.py from Original Repo or merge both to and create an option for panel type as floor heater and ac and also mention option to provide their supported modes like cooling and heating.
-
+Supports both **Air Conditioners** (using DLP panels) and **Floor Heating** controllers.
 
 ```yaml
 climate:
   - platform: buspro
     devices:
-      - address: 1.74
-        name: Living Room
-      - address: 1.74
-        name: Front Door
+      # Air Conditioner via DLP Panel (defaults to type: ac)
+      - address: 100.154
+        name: "2nd Living Room AC"
+        type: ac
+        preset_modes:
+          - away
+          - home
+          - sleep
+
+      # Floor Heating Module Channel (e.g., bath, living room)
+      - address: 100.207
+        name: "Bath Floor Heating"
+        type: floor_heating
+        channel: 1
+        preset_modes:
+          - home
+          - sleep
+          - away
 ```
-+ **devices** _(Required)_: A list of devices to set up
-  + **address** _(string) (Required)_: The address of the sensor device on the format `<subnet ID>.<device ID>`
-  + **name** _(string) (Required)_: The name of the device
-    
+* **type** *(string) (Optional)*: Either `ac` or `floor_heating`. Defaults to `ac`.
+* **channel** *(int) (Optional)*: The channel on the floor heating module (1–6). Required for `floor_heating`.
+* **preset_modes** *(list) (Optional)*: Supported presets like `home` (Day), `sleep` (Night), `away` (Away).
 
 ---
+
+### Sensor Platform
+```yaml
+sensor:
+  - platform: buspro
+    devices:
+      - address: 100.173
+        name: "Living Room Temp"
+        type: temperature
+        device: 8in1
+      - address: 100.173
+        name: "Living Room Lux"
+        type: illuminance
+```
+* **device** *(string) (Optional)*: Specify `8in1` or `12in1` to automatically subtract the `20` degree temperature offset used in raw HDL sensor status packets.
+
+---
+
+### Binary Sensor Platform (Motion & Dry Contacts)
+
+Specifically optimized for dry contact modules such as the `sb-dry-4z`.
+
+```yaml
+binary_sensor:
+  - platform: buspro
+    devices:
+      # 8in1 Motion Sensor
+      - address: 100.173
+        name: "Living Room Motion"
+        type: motion
+        device_class: motion
+
+      # Dry Contact Sensors (e.g., sb-dry-4z at subnet 100, device 91)
+      - address: 100.91.1
+        name: "Living Room Window"
+        type: dry_contact
+        device_class: window
+      - address: 100.91.2
+        name: "Front Room Window"
+        type: dry_contact
+        device_class: window
+      - address: 100.91.3
+        name: "Terrace Door"
+        type: dry_contact
+        device_class: door
+      - address: 100.91.4
+        name: "Parking Gate"
+        type: dry_contact
+        device_class: garage_door
+```
+* **type** *(string) (Required)*: Set to `motion`, `universal_switch`, `single_channel`, or `dry_contact`.
+* **device_class** *(string) (Optional)*: The Home Assistant device class (e.g., `window`, `door`, `garage_door`, `motion`).
+
+---
+
 ## Services
 
-#### Sending an arbitrary message:
-```
-Domain: buspro
-Service: send_message
-Service Data: {"address": [1,74], "operate_code": [4,78], "payload": [1,100,0,3]}
-```
-#### Activating a scene:
-```
-Domain: buspro
-Service: activate_scene
-Service Data: {"address": [1,74], "scene_address": [3,5]}
-```
-#### Setting an universal switch:
-```
-Domain: buspro
-Service: set_universal_switch
-Service Data: {"address": [1,74], "switch_number": 100, "status": 1}
+This integration exposes standard services to allow custom scripts and automation to send raw commands onto your HDL network.
+
+### Sending an Arbitrary Message
+```yaml
+service: buspro.send_message
+data:
+  address: [1, 74]
+  operate_code: [4, 78]
+  payload: [1, 100, 0, 3]
 ```
 
-#### List of Changes in this Fork:
+### Activating a Scene
+```yaml
+service: buspro.activate_scene
+data:
+  address: [1, 74]
+  scene_address: [3, 5]
+```
 
-## General Changes:
-I have updated polling / status update on HA startup for all devices, so all devices start showing available.
-I have also fixed update process on various devices to report correct device status
+### Setting a Universal Switch
+```yaml
+service: buspro.set_universal_switch
+data:
+  address: [1, 74]
+  switch_number: 100
+  status: 1
+```
 
-## Device wise Change List : 
-# Binary sensor:
+---
 
-Added additional option 
-device: 
+## License
 
-with options 
-8in1
-12in1
-pir
-Older devices like PIR do not respond to request sensor status, but newer devices do, so we can set our device type
-Added additional BusPro code to check status of CMS-PIR Motion Sensors
-
-# sensor:
-Fixed temperature variance of 20 degree on certain devices and more frequent reporting of current temperature status.
-
-# climate :
-
-Added Support for AC Control via DLP Panel command, we need to mention Subnet and Device ID of Room DLP Panel which can be used to control  the AC.
-I have removed Floor Heating and Heating Modes for my needs, but someone can merge both climate.py and create an option for panel type as floor heater and ac and also mention option to provide their supported modes like cooling and heating.
-
-# cover :
-
-I have added Extensive Curtain support forked from IlPicasso (https://github.com/IlPicasso/home_assistant_buspro) 
-additional option :
-opening_time : in seconds (default 20)
-adjustable : True or False (default True)
-
-Made Curtain supported on Google Assistant.
-Made Curtain Adjustable to specific position and also report current position.
-You need to check on stopwatch how many seconds it takes to open a particular curtain and mention that time in opening_time (set as 20s by default)
-Based on it, it will calculate current position while opening and closing
-When Curtain Position is set in between open and close then it will first close the curtain , so we can be sure that status of curtain is synced with the HA as there is no way in BusPro to know current status of curtain, then it will open the curtain to desired position.
-All is based on time, so to open Curtain at 50% it will take 30 seconds if opening time is 20s, 
-20 seconds to completely close it, whatever condition it is in and 10s to open it to 50
-
-It keeps curtain position reported at 99% or 1% so both open and close button remain active, so in case position is not matching with buspro you can still operate the button and it doesnt get greyed out.
-
-# Added additional device FAN
-
-configuration is same as light with optional dimmable which can be set to false if Fan speed cannot be set.
-
-This shows Fan seperately on Google Home and HA, so they are not confused with lights
-
-# Light:
-non dimmable lights were reporting as dimmable to HA, fixed this bug
-Fixed current status getting updated on HA  
-
+This project is licensed under the MIT License.

@@ -97,6 +97,15 @@ class OperateCode(Enum):
     ControlFloorHeatingStatus = b'\x19\x46'
     ControlFloorHeatingStatusResponse = b'\x19\x47'
 
+    ReadFloorHeatingStatusNew = b'\x1C\x5E'
+    ReadFloorHeatingStatusNewResponse = b'\x1C\x5F'
+    ControlFloorHeatingStatusNew = b'\x1C\x5C'
+    ControlFloorHeatingStatusNewResponse = b'\x1C\x5D'
+    ReadFloorHeatingTemperatureNew = b'\x19\x48'
+    ReadFloorHeatingTemperatureNewResponse = b'\x19\x49'
+    ReadFloorHeatingTemperatureLegacy = b'\xE3\xE7'
+    ReadFloorHeatingTemperatureLegacyResponse = b'\xE3\xE8'
+
     ReadDryContactStatus = b'\x15\xCE'
     ReadDryContactStatusResponse = b'\x15\xCF'
 

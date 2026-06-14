@@ -57,6 +57,14 @@ HDL_TO_HA_PRESET = {
 
 CONF_PRESET_MODES = "preset_modes"
 CONF_RELAY_ADDRESS = "relay_address"
+CONF_CLIMATE_TYPE = "type"
+CONF_CLIMATE_TYPE_AC = "ac"
+CONF_CLIMATE_TYPE_FLOOR_HEATING = "floor_heating"
+CONF_CHANNEL = "channel"
+CLIMATE_TYPES = {
+    CONF_CLIMATE_TYPE_AC,
+    CONF_CLIMATE_TYPE_FLOOR_HEATING,
+}
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_DEVICES):
@@ -68,6 +76,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
                     cv.ensure_list, [vol.In(HA_PRESET_TO_HDL)]
                 ),
                 vol.Optional(CONF_RELAY_ADDRESS, default=''): cv.string,
+                vol.Optional(CONF_CLIMATE_TYPE, default=CONF_CLIMATE_TYPE_AC): vol.In(CLIMATE_TYPES),
+                vol.Optional(CONF_CHANNEL, default=1): cv.positive_int,
             })
         ])
 })
@@ -77,7 +87,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 async def async_setup_platform(hass, config, async_add_entites, discovery_info=None):
     """Set up Buspro switch devices."""
     # noinspection PyUnresolvedReferences
-    from .pybuspro.devices import Climate
+    from .pybuspro.devices import Climate, FloorHeating
     from .pybuspro.devices import Sensor
 
     hdl = hass.data[DATA_BUSPRO].hdl
@@ -87,29 +97,33 @@ async def async_setup_platform(hass, config, async_add_entites, discovery_info=N
         address = device_config[CONF_ADDRESS]
         name = device_config[CONF_NAME]
         preset_modes = device_config[CONF_PRESET_MODES]
+        climate_type = device_config.get(CONF_CLIMATE_TYPE, CONF_CLIMATE_TYPE_AC)
+        channel = device_config.get(CONF_CHANNEL, 1)
 
         address2 = address.split('.')
         device_address = (int(address2[0]), int(address2[1]))
 
-        _LOGGER.debug("Adding climate '{}' with address {}".format(name, device_address))
+        if climate_type == CONF_CLIMATE_TYPE_FLOOR_HEATING:
+            _LOGGER.debug("Adding floor heating '{}' with address {} and channel {}".format(name, device_address, channel))
+            floor_heater = FloorHeating(hdl, device_address, channel, name)
+            devices.append(BusproFloorHeating(hass, floor_heater, preset_modes))
+        else:
+            _LOGGER.debug("Adding AC climate '{}' with address {}".format(name, device_address))
+            climate = Climate(hdl, device_address, name)
 
-        climate = Climate(hdl, device_address, name)
+            relay_sensor = None
+            relay_address = device_config[CONF_RELAY_ADDRESS]
+            if relay_address:
+                relay_address2 = relay_address.split('.')
+                relay_device_address = (int(relay_address2[0]), int(relay_address2[1]))
+                relay_channel_number = int(relay_address2[2])
+                relay_sensor = Sensor(hdl, relay_device_address, channel_number=relay_channel_number)
 
-        relay_sensor = None
-        relay_address = device_config[CONF_RELAY_ADDRESS]
-        if relay_address:
-            relay_address2 = relay_address.split('.')
-            relay_device_address = (int(relay_address2[0]), int(relay_address2[1]))
-            relay_channel_number = int(relay_address2[2])
-            relay_sensor = Sensor(hdl, relay_device_address, channel_number=relay_channel_number)
-
-        devices.append(BusproClimate(hass, climate, preset_modes, relay_sensor))
+            devices.append(BusproClimate(hass, climate, preset_modes, relay_sensor))
 
     async_add_entites(devices)
     for device in devices:
         await device.async_read_status()
-    for device in devices:
-        await device.async_read_temperature()
 
 
 
@@ -323,4 +337,131 @@ class BusproClimate(ClimateEntity):
     async def async_read_temperature(self):
         """Read the status of the device."""
         await self._device.read_temperature()
+        self.async_write_ha_state()
+
+
+class BusproFloorHeating(ClimateEntity):
+    def __init__(self, hass, device, preset_modes):
+        self._hass = hass
+        self._device = device
+        self._preset_modes = preset_modes
+        self._attr_supported_features = (
+            ClimateEntityFeature.TARGET_TEMPERATURE |
+            ClimateEntityFeature.PRESET_MODE |
+            ClimateEntityFeature.TURN_OFF |
+            ClimateEntityFeature.TURN_ON
+        )
+        self.async_register_callbacks()
+
+    @callback
+    def async_register_callbacks(self):
+        async def after_update_callback(device):
+            self.async_write_ha_state()
+
+        self._device.register_device_updated_cb(after_update_callback)
+
+    @property
+    def should_poll(self):
+        return True
+
+    async def async_update(self, *args):
+        await self._device.read_status()
+        self.async_write_ha_state()
+
+    @property
+    def name(self):
+        return self._device.name
+
+    @property
+    def available(self):
+        return self._hass.data[DATA_BUSPRO].connected
+
+    @property
+    def temperature_unit(self):
+        return "°C"
+
+    @property
+    def current_temperature(self):
+        return self._device.temperature
+
+    @property
+    def target_temperature(self):
+        return self._device.target_temperature
+
+    @property
+    def preset_mode(self) -> Optional[str]:
+        mode = self._device.mode
+        if mode not in list(HDL_TO_HA_PRESET):
+            return PRESET_NONE
+        return HDL_TO_HA_PRESET[mode]
+
+    @property
+    def preset_modes(self) -> Optional[List[str]]:
+        if len(self._preset_modes) == 0:
+            return None
+        keys = HA_PRESET_TO_HDL.keys() & self._preset_modes
+        ha_preset_to_hdl_configured = {k: HA_PRESET_TO_HDL[k] for k in keys}
+        return list(ha_preset_to_hdl_configured)
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        if preset_mode not in list(HA_PRESET_TO_HDL):
+            preset_mode = PRESET_NONE
+        mode = HA_PRESET_TO_HDL[preset_mode]
+        await self._device.control_status(mode=mode)
+        self.async_write_ha_state()
+
+    @property
+    def hvac_action(self) -> Optional[str]:
+        if self._device.is_on:
+            valve = self._device.valve_status
+            if valve is True:
+                return HVACAction.HEATING
+            elif valve is False:
+                return HVACAction.IDLE
+            else:
+                return HVACAction.HEATING
+        else:
+            return HVACAction.OFF
+
+    @property
+    def hvac_mode(self) -> Optional[str]:
+        if self._device.is_on:
+            return HVACMode.HEAT
+        else:
+            return HVACMode.OFF
+
+    @property
+    def hvac_modes(self) -> Optional[List[str]]:
+        return [HVACMode.HEAT, HVACMode.OFF]
+
+    async def async_set_hvac_mode(self, hvac_mode: str) -> None:
+        if hvac_mode == HVACMode.OFF:
+            await self._device.control_status(status=False)
+        elif hvac_mode == HVACMode.HEAT:
+            await self._device.control_status(status=True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self) -> None:
+        await self.async_set_hvac_mode(HVACMode.OFF)
+
+    async def async_turn_on(self) -> None:
+        await self.async_set_hvac_mode(HVACMode.HEAT)
+
+    @property
+    def target_temperature_step(self):
+        return 1
+
+    @property
+    def unique_id(self):
+        return self._device.device_identifier
+
+    async def async_set_temperature(self, **kwargs):
+        temperature = kwargs.get(ATTR_TEMPERATURE)
+        if temperature is None:
+            return
+        await self._device.control_status(target_temperature=temperature)
+        self.async_write_ha_state()
+
+    async def async_read_status(self):
+        await self._device.read_status()
         self.async_write_ha_state()
