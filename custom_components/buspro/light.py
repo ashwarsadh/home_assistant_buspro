@@ -1,4 +1,4 @@
-﻿"""
+"""
 This component provides light support for Buspro.
 
 For more details about this platform, please refer to the documentation at
@@ -115,7 +115,7 @@ class BusproLight(LightEntity):
             """Call after device was updated."""
             hardware_is_on = device.is_on
             hardware_brightness = (device.current_brightness / 100 * 255) if device.current_brightness is not None else 0
-            _LOGGER.info(f"DEBUG_BUSPRO_LIGHT_CB: {self.name} callback: hardware_is_on={hardware_is_on}, hardware_brightness={hardware_brightness}, current_debounced={self._debounced_is_on}")
+            _LOGGER.debug(f"DEBUG_BUSPRO_LIGHT_CB: {self.name} callback: hardware_is_on={hardware_is_on}, hardware_brightness={hardware_brightness}, current_debounced={self._debounced_is_on}")
             
             # Initialize debounced state on first read - write state once
             if self._debounced_is_on is None:
