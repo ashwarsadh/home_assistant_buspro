@@ -1,5 +1,11 @@
+import time
+import logging
 from ..core.telegram import Telegram
 from ..helpers.enums import OperateCode
+
+_LOGGER = logging.getLogger(__name__)
+_last_queries = {}
+
 
 
 class _Control:
@@ -123,6 +129,36 @@ class _Control:
 
     async def send(self):
         telegram = self.telegram
+        if telegram is None:
+            return
+
+        # Deduplicate read-only queries to prevent spamming physical microcontrollers on the bus
+        QUERY_CODES = {
+            OperateCode.ReadStatusOfChannels,
+            OperateCode.ReadStatusOfUniversalSwitch,
+            OperateCode.CurtainSwitchStatus,
+            OperateCode.ReadMotionSensorStatus,
+            OperateCode.ReadSensorStatus,
+            OperateCode.ReadSensorsInOneStatus,
+            OperateCode.ReadDryContactStatus,
+            OperateCode.ReadFloorHeatingStatus,
+            OperateCode.ReadFloorHeatingStatusNew,
+            OperateCode.ReadFloorHeatingTemperatureNew,
+            OperateCode.ReadFloorHeatingTemperatureLegacy,
+            OperateCode.ReadPanelAC,
+        }
+
+        if telegram.operate_code in QUERY_CODES:
+            now = time.time()
+            key = (telegram.target_address, telegram.operate_code, tuple(telegram.payload or []))
+            last_sent = _last_queries.get(key, 0)
+            if now - last_sent < 4.0:
+                _LOGGER.debug(
+                    f"DEDUPLICATOR: Skipping duplicate query {telegram.operate_code} to "
+                    f"{telegram.target_address} (payload={telegram.payload}). Last sent {now - last_sent:.2f}s ago."
+                )
+                return
+            _last_queries[key] = now
 
         # if telegram.target_address[1] == 100:
         #     print("==== {}".format(str(telegram)))

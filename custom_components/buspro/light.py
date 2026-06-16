@@ -183,7 +183,7 @@ class BusproLight(LightEntity):
     @property
     def should_poll(self):
         """No polling needed within Buspro."""
-        return True # Changed to True to keep Google Assistant 'online' and sync state.
+        return False
 
     async def async_update(self, *args):
         """Fetch new state data for this light asynchronously."""

@@ -118,7 +118,7 @@ class BusproFan(FanEntity):
     @property
     def should_poll(self):
         """No polling needed within Buspro."""
-        return True
+        return False
 
     async def async_update(self, *args):
         """Fetch new state data for this light."""

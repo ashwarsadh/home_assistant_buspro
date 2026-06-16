@@ -190,7 +190,7 @@ class BusproClimate(ClimateEntity):
     @property
     def should_poll(self):
         """No polling needed within Buspro."""
-        return True
+        return False
 
     async def async_update(self, *args):
         """Fetch new state data for this light."""
@@ -362,7 +362,7 @@ class BusproFloorHeating(ClimateEntity):
 
     @property
     def should_poll(self):
-        return True
+        return False
 
     async def async_update(self, *args):
         await self._device.read_status()

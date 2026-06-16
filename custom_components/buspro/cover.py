@@ -91,7 +91,7 @@ class BusproCover(CoverEntity):
     @property
     def should_poll(self):
         """No polling needed within Buspro."""
-        return True
+        return False
 
     @property
     def name(self):
