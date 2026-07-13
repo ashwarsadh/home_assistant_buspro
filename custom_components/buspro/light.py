@@ -104,7 +104,18 @@ class BusproLight(LightEntity):
         self.async_register_callbacks()
          # Set the polling interval (e.g., every 60 minutes)
         self._polling_interval = timedelta(minutes=60)
-        event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+        # Stagger the hourly safety poll per HDL device (not per entity):
+        # channels of one device share the same offset so the query
+        # deduplicator still collapses them into a single bus read, while
+        # different devices spread over 5 minutes instead of all polling in
+        # the same tick and causing an hourly lag spike.
+        stagger = hash(str(self._device._device_address)) % 300
+
+        @callback
+        def _start_polling(_now):
+            event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+
+        event.async_call_later(hass, stagger, _start_polling)
 
 
     @callback
@@ -130,11 +141,12 @@ class BusproLight(LightEntity):
                     self._optimistic_brightness = None
 
             # Asymmetric hysteresis debounce:
-            #   ON transitions:  2s delay  (light appears quickly when turned on)
-            #   OFF transitions: 20s delay (prevents PIR-triggered lights from flickering
+            #   ON transitions:  1s delay  (externally-switched lights show up fast,
+            #                               and report_state reaches Google quickly)
+            #   OFF transitions: 4s delay  (prevents PIR-triggered lights from flickering
             #                               out of the active list when sensors re-trigger)
             # User-initiated on/off bypass this entirely via optimistic state in async_turn_on/off.
-            DEBOUNCE_ON_SECS  = 4.0
+            DEBOUNCE_ON_SECS  = 1.0
             DEBOUNCE_OFF_SECS = 4.0
 
             if hardware_is_on == self._debounced_is_on:

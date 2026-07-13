@@ -148,7 +148,15 @@ class BusproClimate(ClimateEntity):
         self._attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE | ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.TURN_ON
         
         self._polling_interval = timedelta(minutes=60)
-        event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+        # Stagger per HDL device so hourly polls don't all fire at once; same
+        # device's channels share the offset so the dedup still collapses them.
+        stagger = hash(str(self._device._device_address)) % 300
+
+        @callback
+        def _start_polling(_now):
+            event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+
+        event.async_call_later(hass, stagger, _start_polling)
         self.async_register_callbacks()
 
     async def async_turn_off(self) -> None:
@@ -258,6 +266,10 @@ class BusproClimate(ClimateEntity):
         climate_control.status = mode
 
         await self._device.control_ac_status(climate_control)
+        # Optimistic: preset_mode derives from _mode; update it before writing
+        # state so Google/UI reflect the change without waiting for the bus.
+        self._mode = mode
+        self._is_on = mode != OnOffStatus.OFF.value
         self.async_write_ha_state()
 
     @property
@@ -293,11 +305,16 @@ class BusproClimate(ClimateEntity):
             climate_control = ControlPanelAC()
             climate_control.status = OnOffStatus.OFF.value
             await self._device.control_ac_status(climate_control)
+            # Optimistic: hvac_mode derives from _is_on, which otherwise only
+            # updates when the panel's response telegram arrives. Set it now so
+            # the state written below (and returned to Google) is the new mode.
+            self._is_on = False
             self.async_write_ha_state()
         elif hvac_mode == HVACMode.COOL:
             climate_control = ControlPanelAC()
             climate_control.status = OnOffStatus.ON.value
             await self._device.control_ac_status(climate_control)
+            self._is_on = True
             self.async_write_ha_state()
         else:
             _LOGGER.error("Unrecognized hvac mode: %s", hvac_mode)

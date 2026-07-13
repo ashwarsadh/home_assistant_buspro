@@ -27,6 +27,7 @@ class Cover(Device):
         self._opening_time=opening_time #time it takes to open curtain, set to 20 sec by default
         self._state_changetime=opening_time
         self._start_time = None #time at which curtain started to open or close to calculate start_time
+        self._position_task = None # background close->open->stop sequence for set_position
         self.register_telegram_received_cb(self._telegram_received_cb)
         self._call_read_current_status_of_channels(run_from_init=True)
 
@@ -44,15 +45,28 @@ class Cover(Device):
                 self._call_device_updated()
 
     async def set_stop(self):
+        self._cancel_position_task()
         await self._set(CoverStatus.STOP)
 
     async def set_open(self):
+        self._cancel_position_task()
         await self._set(CoverStatus.OPEN)
 
     async def set_close(self):
+        self._cancel_position_task()
         await self._set(CoverStatus.CLOSE)
 
+    def _cancel_position_task(self):
+        if self._position_task is not None and not self._position_task.done():
+            self._position_task.cancel()
+        self._position_task = None
+
     async def set_position(self,position):
+        # Send the first command and update state optimistically, then run the
+        # long close->open->stop sequence in a background task so the service
+        # call returns immediately (it used to block for 20-40s) and STOP can
+        # abort a sequence that is still running.
+        self._cancel_position_task()
         self._requested_position=position
         if self._status == CoverStatus.OPEN:
             self._status = STATE_CLOSING
@@ -63,19 +77,40 @@ class Cover(Device):
         self._state_changetime = self._opening_time+((position/100)*self._opening_time) # will take 30 seconds to do 50% for 20s assumed time
         await self._send_command()#first close the curtain completely to set current state
         self._call_device_updated()
-        await asyncio.sleep(self._opening_time)# wait till its closed
-        self._command = CoverStatus.OPEN
-        await self._send_command()#then open it
-        await asyncio.sleep((position/100)*self._opening_time)# if 50% position then wait for 15 seconds if opening time is 30
-        self._command = CoverStatus.STOP
-        await self._send_command()#then Stop it
-        if self._status == STATE_OPENING:
-            self._status = CoverStatus.CLOSE
-        else:
-            self._status = CoverStatus.OPEN
-        self._state_changetime=self._opening_time#reset for further use
-        self._position=position#saves current position
-        self._call_device_updated()
+        self._position_task = asyncio.ensure_future(
+            self._run_position_sequence(position), loop=self._buspro.loop)
+
+    async def _run_position_sequence(self, position):
+        try:
+            await asyncio.sleep(self._opening_time)# wait till its closed
+            self._command = CoverStatus.OPEN
+            await self._send_command()#then open it
+            await asyncio.sleep((position/100)*self._opening_time)# if 50% position then wait for 15 seconds if opening time is 30
+            self._command = CoverStatus.STOP
+            await self._send_command()#then Stop it
+            if self._status == STATE_OPENING:
+                self._status = CoverStatus.CLOSE
+            else:
+                self._status = CoverStatus.OPEN
+            self._state_changetime=self._opening_time#reset for further use
+            self._position=position#saves current position
+            self._call_device_updated()
+        except asyncio.CancelledError:
+            # STOP/OPEN/CLOSE interrupted the sequence; their handlers own the
+            # state from here.
+            pass
+        except Exception:
+            # Background task: nothing awaits it, so log instead of losing the
+            # error, and leave a settled status rather than a stuck OPENING/CLOSING.
+            _LOGGER.exception("Cover %s: position sequence failed", self._device_address)
+            self._status = self._command if self._command in (CoverStatus.OPEN, CoverStatus.CLOSE) else CoverStatus.STOP
+            self._call_device_updated()
+        finally:
+            # Only clear the reference if it still points at THIS task; a rapid
+            # second set_position may already have replaced it, and clobbering
+            # the new task would orphan a sequence that STOP could not cancel.
+            if self._position_task is asyncio.current_task():
+                self._position_task = None
 
 
 

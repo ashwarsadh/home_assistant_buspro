@@ -74,57 +74,14 @@ class Climate(Device):
         rfhs.command=4 #read temperature
         await rfhs.send()
 
-    def _telegram_received_control_ac_status_cb(self, telegram, panel_status):
-
-        if telegram.operate_code == OperateCode.ReadPanelACResponse:
-            self.unregister_telegram_received_cb(
-                self._telegram_received_control_ac_status_cb, panel_status)
-            if telegram.payload[0]==3:
-                self._status = telegram.payload[1]
-                self._mode = telegram.payload[1]
-            elif telegram.payload[0]==4:
-                self._current_temperature = telegram.payload[1]
-                self._normal_temperature = telegram.payload[1]
-
-        
-            if hasattr(panel_status, 'status'):
-                if panel_status.status is not None:
-                    status = panel_status.status
-                    mode = panel_status.status
-                    command = 3
-            if hasattr(panel_status, 'mode'):
-                if panel_status.mode is not None:
-                    mode = panel_status.mode
-                    status=panel_status.mode
-                    command = 3
-            normal_temperature=None
-            _current_temperature=None
-            if hasattr(panel_status, 'normal_temperature'):
-                if panel_status.normal_temperature is not None:
-                    normal_temperature = panel_status.normal_temperature
-                    command = 4
-            if hasattr(panel_status, '_current_temperature'):
-                if panel_status._current_temperature is not None:
-                    _current_temperature = panel_status._current_temperature
-                    command = 4
-            if normal_temperature is None:
-                normal_temperature=_current_temperature
-
-            if mode is None:
-                mode=normal_temperature
-
-            cfhs_ = _ControlPanelAC(self._buspro)
-            cfhs_.subnet_id, cfhs_.device_id = self._device_address
-            cfhs_.command = command
-            cfhs_.mode = mode
-
-            async def send_control_panel_status(cfhs__):
-                await cfhs__.send()
-
-            asyncio.ensure_future(send_control_panel_status(cfhs_), loop=self._buspro.loop)
+    # NOTE: the old _telegram_received_control_ac_status_cb echo-callback was
+    # removed: it was registered on every control call, only unregistered when a
+    # ReadPanelACResponse happened to arrive, and then RE-SENT a control telegram
+    # to the panel. After N commands a single status poll re-fired N stale
+    # callbacks, spamming the bus and flapping state. The panel already answers
+    # ControlPanelACResponse, which _telegram_received_cb handles.
 
     async def control_ac_temperature(self, panel_status: ControlPanelAC):
-        self.register_telegram_received_cb(self._telegram_received_control_ac_status_cb, panel_status)
         rfhs = _ControlPanelAC(self._buspro)
         rfhs.subnet_id, rfhs.device_id = self._device_address
         rfhs.command=4
@@ -159,7 +116,6 @@ class Climate(Device):
         await rfhs.send()
 
     async def control_ac_status(self, panel_status: ControlPanelAC):
-        self.register_telegram_received_cb(self._telegram_received_control_ac_status_cb, panel_status)
         rfhs = _ControlPanelAC(self._buspro)
         rfhs.subnet_id, rfhs.device_id = self._device_address
         rfhs.command=3

@@ -75,7 +75,15 @@ class BusproCover(CoverEntity):
         self.async_register_callbacks()
                  # Set the polling interval (e.g., every 30 seconds)
         self._polling_interval = timedelta(minutes=60)
-        event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+        # Stagger per HDL device so hourly polls don't all fire at once; same
+        # device's channels share the offset so the dedup still collapses them.
+        stagger = hash(str(self._device._device_address)) % 300
+
+        @callback
+        def _start_polling(_now):
+            event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+
+        event.async_call_later(hass, stagger, _start_polling)
 
     @callback
     def async_register_callbacks(self):

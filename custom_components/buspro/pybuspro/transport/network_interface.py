@@ -1,3 +1,5 @@
+import logging
+
 from .udp_client import UDPClient
 from ..helpers.telegram_helper import TelegramHelper
 # from ..devices.control import Control
@@ -40,7 +42,10 @@ class NetworkInterface:
     async def send_telegram(self, telegram):
         message = self._th.build_send_buffer(telegram)
 
-        gateway_address_send, _ = self.gateway_address_send_receive
-        self.buspro.logger.debug(self._th.build_telegram_from_udp_data(message, gateway_address_send))
+        # Log the telegram we already have instead of re-parsing our own send
+        # buffer (which recomputed the CRC16 in pure Python on every command,
+        # even with debug logging disabled).
+        if self.buspro.logger.isEnabledFor(logging.DEBUG):
+            self.buspro.logger.debug(telegram)
 
         await self.udp_client.send_message(message)

@@ -101,7 +101,15 @@ class BusproFan(FanEntity):
         self.async_register_callbacks()
          # Set the polling interval (e.g., every 30 seconds)
         self._polling_interval = timedelta(minutes=60)
-        event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+        # Stagger per HDL device so hourly polls don't all fire at once; same
+        # device's channels share the offset so the dedup still collapses them.
+        stagger = hash(str(self._device._device_address)) % 300
+
+        @callback
+        def _start_polling(_now):
+            event.async_track_time_interval(hass, self.async_update, self._polling_interval)
+
+        event.async_call_later(hass, stagger, _start_polling)
 
 
     @callback
@@ -165,20 +173,26 @@ class BusproFan(FanEntity):
             brightness = self._device.previous_brightness
 
         await self._device.set_brightness(brightness, self._running_time)
+        # The device object is already optimistic; push it to hass.states now so
+        # Google Assistant EXECUTE responses see the new state instead of waiting
+        # for the bus response to round-trip.
+        self.async_write_ha_state()
 
 
     async def async_turn_on(self, speed: Optional[str] = None, percentage: Optional[int] = None, preset_mode: Optional[str] = None, **kwargs: Any) -> None:
         """Instruct the light to turn on."""
-        brightness = int(kwargs.get(ATTR_PERCENTAGE, 255) / 255 * 100)
+        brightness = percentage if percentage is not None else 100
 
         if not self.is_on and self._device.previous_brightness is not None and brightness == 100:
             brightness = self._device.previous_brightness
 
         await self._device.set_brightness(brightness, self._running_time)
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         """Instruct the light to turn off."""
         await self._device.set_off(self._running_time)
+        self.async_write_ha_state()
 
     @property
     def unique_id(self):

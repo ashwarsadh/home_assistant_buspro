@@ -93,10 +93,13 @@ class BusproSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs):
         """Instruct the switch to turn on."""
         await self._device.set_on()
+        # Device state is optimistic; write it now so Google Assistant sees it.
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         """Instruct the switch to turn off."""
         await self._device.set_off()
+        self.async_write_ha_state()
 
     @property
     def unique_id(self):

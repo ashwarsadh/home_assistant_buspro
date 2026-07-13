@@ -42,6 +42,10 @@ class Buspro:
 
         self.callback_all_messages = None
         self._telegram_received_cbs = []
+        # device_address (tuple) -> list of cb entries, so each incoming
+        # telegram dispatches in O(matching) instead of scanning every
+        # registered entity callback (~300 on this installation).
+        self._telegram_received_cbs_by_addr = {}
 
         self.gateway_address_send_receive = gateway_address_send_receive
 
@@ -78,22 +82,30 @@ class Buspro:
         self.started = False
 
     def _callback_all_messages(self, telegram):
-        self.telegram_logger.debug(telegram)
+        # Telegram.__str__ JSON-encodes the whole packet; only pay that cost
+        # when the buspro.telegram logger is actually at debug level.
+        if self.telegram_logger.isEnabledFor(logging.DEBUG):
+            self.telegram_logger.debug(telegram)
 
         if self.callback_all_messages is not None:
             self.callback_all_messages(telegram)
 
-        for telegram_received_cb in self._telegram_received_cbs:
-            device_address = telegram_received_cb['device_address']
+        if telegram.operate_code is OperateCode.TIME_IF_FROM_LOGIC_OR_SECURITY:
+            return
 
-            # Sender callback kun for oppgitt kanal
-            if device_address == telegram.target_address or device_address == telegram.source_address:
-                if telegram.operate_code is not OperateCode.TIME_IF_FROM_LOGIC_OR_SECURITY:
-                    postfix = telegram_received_cb['postfix']
-                    if postfix is not None:
-                        telegram_received_cb['callback'](telegram, postfix)
-                    else:
-                        telegram_received_cb['callback'](telegram)
+        # Sender callback kun for oppgitt kanal
+        addresses = {self._addr_key(telegram.target_address), self._addr_key(telegram.source_address)}
+        for address in addresses:
+            for telegram_received_cb in self._telegram_received_cbs_by_addr.get(address, ()):
+                postfix = telegram_received_cb['postfix']
+                if postfix is not None:
+                    telegram_received_cb['callback'](telegram, postfix)
+                else:
+                    telegram_received_cb['callback'](telegram)
+
+    @staticmethod
+    def _addr_key(device_address):
+        return tuple(device_address) if device_address is not None else None
 
     async def _stop_network_interface(self):
         if self.network_interface is not None:
@@ -104,16 +116,25 @@ class Buspro:
         self.callback_all_messages = telegram_received_cb
 
     def register_telegram_received_device_cb(self, telegram_received_cb, device_address, postfix=None):
-        self._telegram_received_cbs.append({
+        entry = {
             'callback': telegram_received_cb,
             'device_address': device_address,
-            'postfix': postfix})
+            'postfix': postfix}
+        self._telegram_received_cbs.append(entry)
+        self._telegram_received_cbs_by_addr.setdefault(self._addr_key(device_address), []).append(entry)
 
     def unregister_telegram_received_device_cb(self, telegram_received_cb, device_address, postfix=None):
-        self._telegram_received_cbs.remove({
+        entry = {
             'callback': telegram_received_cb,
             'device_address': device_address,
-            'postfix': postfix})
+            'postfix': postfix}
+        self._telegram_received_cbs.remove(entry)
+        key = self._addr_key(device_address)
+        bucket = self._telegram_received_cbs_by_addr.get(key)
+        if bucket is not None:
+            bucket.remove(entry)
+            if not bucket:
+                del self._telegram_received_cbs_by_addr[key]
 
     @staticmethod
     async def sync():
