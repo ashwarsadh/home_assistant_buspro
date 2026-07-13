@@ -115,6 +115,10 @@ class Light(Device):
                 if not self._awaiting_ack:
                     return
                 self._awaiting_ack = False
+                # Supersede guard: if a newer command changed the target level,
+                # never re-send this (stale) one.
+                if self._brightness != intensity:
+                    return
                 await self._send_single_channel_control(intensity, running_time_seconds)
             except asyncio.CancelledError:
                 pass

@@ -69,7 +69,7 @@ switch:
 fan:
   - platform: buspro
     devices:
-      100.13.1:
+      1.13.1:
         name: "Kitchen Exhaust Fan"
         dimmable: true
 ```
@@ -81,7 +81,7 @@ fan:
 cover:
   - platform: buspro
     devices:
-      100.221.1:
+      1.21.1:
         name: "Living Room Curtains"
         opening_time: 20
 ```
@@ -98,7 +98,7 @@ climate:
   - platform: buspro
     devices:
       # Air Conditioner via DLP Panel (defaults to type: ac)
-      - address: 100.154
+      - address: 1.154
         name: "2nd Living Room AC"
         type: ac
         preset_modes:
@@ -107,7 +107,7 @@ climate:
           - sleep
 
       # Floor Heating Module Channel (e.g., bath, living room)
-      - address: 100.207
+      - address: 1.207
         name: "Bath Floor Heating"
         type: floor_heating
         channel: 1
@@ -127,11 +127,11 @@ climate:
 sensor:
   - platform: buspro
     devices:
-      - address: 100.173
+      - address: 1.73
         name: "Living Room Temp"
         type: temperature
         device: 8in1
-      - address: 100.173
+      - address: 1.73
         name: "Living Room Lux"
         type: illuminance
 ```
@@ -148,26 +148,26 @@ binary_sensor:
   - platform: buspro
     devices:
       # 8in1 Motion Sensor
-      - address: 100.173
+      - address: 1.73
         name: "Living Room Motion"
         type: motion
         device_class: motion
 
-      # Dry Contact Sensors (e.g., sb-dry-4z at subnet 100, device 91)
-      - address: 100.91.1
+      # Dry Contact Sensors (e.g., a 4-zone dry-contact module)
+      - address: 1.91.1
         name: "Living Room Window"
         type: dry_contact
         device_class: window
-      - address: 100.91.2
-        name: "Front Room Window"
+      - address: 1.91.2
+        name: "Bedroom Window"
         type: dry_contact
         device_class: window
-      - address: 100.91.3
-        name: "Terrace Door"
+      - address: 1.91.3
+        name: "Back Door"
         type: dry_contact
         device_class: door
-      - address: 100.91.4
-        name: "Parking Gate"
+      - address: 1.91.4
+        name: "Garage Door"
         type: dry_contact
         device_class: garage_door
 ```
